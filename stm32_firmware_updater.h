@@ -10,7 +10,7 @@
 #define PACKET_NACK 0x01 // Not Acknowledge
 
 #define PACKET_MAX_PAYLOAD_SIZE 256u  // Maximum payload size for a OTA packet in bytes
-#define PACKET_OVERHEAD 11 // 11 bytes used for a OTA packet's metadata
+#define PACKET_OVERHEAD 11 // 11 bytes used for a OTA packet's metadata (all fields except payload)
 #define PACKET_MAX_SIZE (PACKET_MAX_PAYLOAD_SIZE + PACKET_OVERHEAD)  // Max size of OTA packet in bytes
 #define APP_FW_MAX_SIZE (0x0807FFFF - 0x08008000)  // Sector 7 end - Sector 2 start
 
@@ -35,17 +35,26 @@ typedef struct OtaDataPacket {
     uint16_t packet_num;
     uint16_t payload_len;
     uint8_t* payload;
-    uint32_t crc16;
+    uint32_t crc32;
     uint8_t eof;
 }__attribute__((packed)) OtaDataPacket;
 
 typedef struct OtaCommandPacket {
     uint8_t sof;
     uint8_t packet_type;
-    uint16_t packet_num;
+    uint16_t packet_num;  // "don't care" for command packet
     uint16_t payload_len;
     uint8_t cmd;
-    uint32_t crc16;
+    uint32_t crc32;
     uint8_t eof;
 }__attribute__((packed)) OtaCommandPacket;
 
+typedef struct OtaResponsePacket {
+    uint8_t sof;
+    uint8_t packet_type;
+    uint16_t packet_num;  // "don't care" for response packet
+    uint16_t payload_len;
+    uint8_t status;
+    uint32_t crc32;
+    uint8_t eof;
+}__attribute__((packed)) OtaResponsePacket;

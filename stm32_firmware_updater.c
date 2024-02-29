@@ -23,8 +23,6 @@ int main(int argc, char* argv[]) {
         printf("Usage: ./stm32_firmware_updater /dev/tty.usbserial-XXXXX <baud_rate>");
         exit(EXIT_FAILURE);
     }
-
-    
     char* port_name = argv[1];
     int baud_rate = atoi(argv[2]);
 
@@ -38,6 +36,11 @@ int main(int argc, char* argv[]) {
 
     /* send OTA start command */
     sendOtaStartCommand(port);
+
+    /* send OTA Header */
+
+
+    /* send OTA end command */
 
 
     // Send data
@@ -77,11 +80,6 @@ int main(int argc, char* argv[]) {
     sp_free_port(port);
     free(buf);
 
-    /* send OTA Header */
-
-
-    /* send OTA end command */
-
     return EXIT_SUCCESS;
 }
 
@@ -108,7 +106,7 @@ int sendOtaStartCommand(struct sp_port* port) {
     cmd_packet->packet_type = COMMAND;
     cmd_packet->packet_num  = 0;
     cmd_packet->payload_len = 1;
-    cmd_packet->crc16       = 0;  // TBD: Implement CRC16
+    cmd_packet->crc32       = 0;  // TBD: Implement CRC32
     cmd_packet->eof         = PACKET_EOF;
 
     // Send OTA command packet
@@ -119,8 +117,15 @@ int sendOtaStartCommand(struct sp_port* port) {
         printf("Timed out, %d/%d bytes sent.\n", res, size);
         return -1;
     }
+    printf("Sent OTA start command successfully.\n");
 
-    printf("Sent %d bytes successfully.\n", size);
+    // Wait for ACK or NACK from MCU
+    printf("Waiting for ACK or NACK from MCU...\n") 
+    if (!isAckResponseReceived(port)) {
+        return -1;
+    }
+    printf("Received ACK from MCU.\n");
+
     return 0;
 }
 
@@ -190,5 +195,23 @@ int check(enum sp_return result) {
         case SP_OK:
         default:
             return result;
+    }
+}
+
+bool isAckResponseReceived(struct sp_port* port) {
+    uint8_t buf[PACKET_MAX_SIZE];
+    int size = sizeof(OtaResponsePacket);
+    int res = check(sp_blocking_read(port, buf, size, SEND_RECEIVE_TIMEOUT_MS));
+    if (res != size) {
+        printf("Timed out while reading OTA response packet, %d/%d bytes received.\n", res, size);
+        return false;
+    }
+    OtaResponsePacket* response = (OtaResponsePacket*) buf;
+    // TODO: Check for CRC32
+    if (response->status == PACKET_ACK) {
+        return true;
+    } else {
+        printf("Received NACK.\n");
+        return false;
     }
 }
