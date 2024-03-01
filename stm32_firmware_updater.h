@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#define SEND_RECEIVE_TIMEOUT_MS 1000
+#define SEND_RECEIVE_TIMEOUT_MS 2000
 
 #define APP_FLASH_ADDR 0x08040000  // Application's flash address
 
@@ -29,16 +29,19 @@ typedef enum ota_command {
 } ota_command_t;
 
 /* Struct definitions */
-typedef struct OtaDataPacket {
-    uint8_t sof;
-    uint8_t packet_type;
-    uint16_t packet_num;
-    uint16_t payload_len;
-    uint8_t* payload;
+typedef struct FileInfo {
+    uint32_t file_size;
     uint32_t crc32;
-    uint8_t eof;
-}__attribute__((packed)) OtaDataPacket;
+} FileInfo;
 
+/*
+ * Packet Structure:
+ * ----------------------------------------------------------------------------------------------------
+ * |     u8     |     u8      |      u16      |       u16      |        u8         |  u32  |    u8    |
+ * ----------------------------------------------------------------------------------------------------
+ * | Start Byte | Packet Type |   Reserved    | Payload Length |      Command      | CRC32 | End Byte |
+ * ----------------------------------------------------------------------------------------------------
+ */
 typedef struct OtaCommandPacket {
     uint8_t sof;
     uint8_t packet_type;
@@ -49,6 +52,50 @@ typedef struct OtaCommandPacket {
     uint8_t eof;
 }__attribute__((packed)) OtaCommandPacket;
 
+/*
+ * Packet Structure:
+ * ----------------------------------------------------------------------------------------------------
+ * |     u8     |     u8      |      u16      |       u16      | FileInfo (64 bits)|  u32  |    u8    |
+ * ----------------------------------------------------------------------------------------------------
+ * | Start Byte | Packet Type |   Reserved    | Payload Length | File Information  | CRC32 | End Byte |
+ * ----------------------------------------------------------------------------------------------------
+*/
+typedef struct OtaHeaderPacket {
+    uint8_t sof;
+    uint8_t packet_type;
+    uint16_t packet_num;  // "don't care" for header packet
+    FileInfo file_info;
+    uint8_t* payload;
+    uint32_t crc32;
+    uint8_t eof;
+}__attribute__((packed)) OtaHeaderPacket;
+
+/*
+ * Packet Structure:
+ * ----------------------------------------------------------------------------------------------------
+ * |     u8     |     u8      |      u16      |       u16      | u8* (Variable Len)|  u32  |    u8    |
+ * ----------------------------------------------------------------------------------------------------
+ * | Start Byte | Packet Type |   Reserved    | Payload Length |     Payload       | CRC32 | End Byte |
+ * ----------------------------------------------------------------------------------------------------
+*/
+typedef struct OtaDataPacket {
+    uint8_t sof;
+    uint8_t packet_type;
+    uint16_t packet_num;
+    uint16_t payload_len;
+    uint8_t* payload;
+    uint32_t crc32;
+    uint8_t eof;
+}__attribute__((packed)) OtaDataPacket;
+
+/*
+ * Packet Structure:
+ * ----------------------------------------------------------------------------------------------------
+ * |     u8     |     u8      |      u16      |       u16      |        u8         |  u32  |    u8    |
+ * ----------------------------------------------------------------------------------------------------
+ * | Start Byte | Packet Type |   Reserved    | Payload Length |      Status       | CRC32 | End Byte |
+ * ----------------------------------------------------------------------------------------------------
+*/
 typedef struct OtaResponsePacket {
     uint8_t sof;
     uint8_t packet_type;
