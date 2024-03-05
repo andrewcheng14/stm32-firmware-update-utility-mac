@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#define SEND_RECEIVE_TIMEOUT_MS 2000
+#define SEND_RECEIVE_TIMEOUT_MS 10000  // 10 secs
 
 #define APP_FLASH_ADDR 0x08040000  // Application's flash address
 
@@ -9,10 +9,12 @@
 #define PACKET_ACK 0x00  // Acknowledge
 #define PACKET_NACK 0x01 // Not Acknowledge
 
-#define PACKET_MAX_PAYLOAD_SIZE 256u  // Maximum payload size for a OTA packet in bytes
+#define PACKET_MAX_PAYLOAD_SIZE 256  // Maximum payload size for a OTA packet in bytes
 #define PACKET_OVERHEAD 11 // 11 bytes used for a OTA packet's metadata (all fields except payload)
 #define PACKET_MAX_SIZE (PACKET_MAX_PAYLOAD_SIZE + PACKET_OVERHEAD)  // Max size of OTA packet in bytes
 #define APP_FW_MAX_SIZE (0x0807FFFF - 0x08008000)  // Sector 7 end - Sector 2 start
+
+#define FILE_NAME_MAX_LEN 256  // Maximum length of file name in bytes
 
 /* Enum definitions */
 typedef enum ota_packet_type {
@@ -64,8 +66,8 @@ typedef struct OtaHeaderPacket {
     uint8_t sof;
     uint8_t packet_type;
     uint16_t packet_num;  // "don't care" for header packet
+    uint16_t payload_len;
     FileInfo file_info;
-    uint8_t* payload;
     uint32_t crc32;
     uint8_t eof;
 }__attribute__((packed)) OtaHeaderPacket;
