@@ -1,4 +1,9 @@
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <libserialport.h>
 
 #define SEND_RECEIVE_TIMEOUT_MS 10000  // 10 secs
 
@@ -107,3 +112,24 @@ typedef struct OtaResponsePacket {
     uint32_t crc32;
     uint8_t eof;
 }__attribute__((packed)) OtaResponsePacket;
+
+// Open and configure port with 8 bits word length, no parity, and 1 stop bits
+int openSerialPort(char* port_name, int baud_rate, struct sp_port** port);
+
+// Helper function for error handling
+int check(enum sp_return result);
+
+// Send OTA start command with given port over UART
+int sendOtaStartCommand(struct sp_port* port);
+
+// Send OTA header with given port over UART
+int sendOtaHeader(struct sp_port* port, FileInfo file_info);
+
+// Send OTA data with given port over UART
+int sendOtaData(struct sp_port* port, uint8_t* payload, uint16_t packet_num, uint16_t size);
+
+// Send OTA end command with given port over UART
+int sendOtaEndCommand(struct sp_port* port);
+
+// Check if ACK response is received from the given port
+bool isAckResponseReceived(struct sp_port* port);

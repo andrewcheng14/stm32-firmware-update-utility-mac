@@ -1,31 +1,12 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <libserialport.h>
-#include <stdbool.h>
-#include "stm32_firmware_updater.h"
+#include "ota_fw_update.h"
+
+/* Globals */
+uint8_t APP_BIN[APP_FW_MAX_SIZE];
 
 /* 
  * Private Helper Functions 
 */
-// Open and configure port with 8 bits word length, no parity, and 1 stop bits
-int openSerialPort(char* port_name, int baud_rate, struct sp_port** port);
-// Send OTA start command with given port over UART
-int sendOtaStartCommand(struct sp_port* port);
-// Send OTA header with given port over UART
-int sendOtaHeader(struct sp_port* port, FileInfo file_info);
-// Send OTA data with given port over UART
-int sendOtaData(struct sp_port* port, uint8_t* data, int size);
-// Send OTA end command with given port over UART
-int sendOtaEndCommand(struct sp_port* port);
-// Helper function for error handling
-int check(enum sp_return result);
-// Check if ACK response is received from the given port
-bool isAckResponseReceived(struct sp_port* port);
-
-/* Global Arrays */
-uint8_t DATA_BUF[PACKET_MAX_SIZE];
-uint8_t APP_BIN[APP_FW_MAX_SIZE];
+int sendBinaryFile(struct sp_port* port, uint32_t size);
 
 int main(int argc, char* argv[]) {
     char bin_path[FILE_NAME_MAX_LEN];
@@ -58,6 +39,7 @@ int main(int argc, char* argv[]) {
         fclose(file);
         return EXIT_FAILURE;
     }
+    printf("Opened firmware image successfully. Size: %d bytes\n", file_info.file_size);
 
     /* Connect to COM port */
     struct sp_port* port;
@@ -87,7 +69,20 @@ int main(int argc, char* argv[]) {
     }
 
     /* send OTA data */
-
+    if (fread(APP_BIN, 1, file_info.file_size, file) != file_info.file_size) {
+        perror("Error reading file");
+        fclose(file);
+        check(sp_close(port));
+        sp_free_port(port);
+        return -1;
+    }
+    if (sendBinaryFile(port, file_info.file_size) < 0) {
+        printf("Error sending binary file!\n");
+        fclose(file);
+        check(sp_close(port));
+        sp_free_port(port);
+        return EXIT_FAILURE;
+    }
 
     /* send OTA end command */
     if (sendOtaEndCommand(port) < 0) {
@@ -97,6 +92,7 @@ int main(int argc, char* argv[]) {
         sp_free_port(port);
         return EXIT_FAILURE;
     }
+    printf("Firmware update complete yippie! :D\n");
 
     // close ports and free resources
     fclose(file);
@@ -106,156 +102,21 @@ int main(int argc, char* argv[]) {
     return EXIT_SUCCESS;
 }
 
-int openSerialPort(char* port_name, int baud_rate, struct sp_port** port) {
-    printf("Opening port %s with %d baud rate, no parity, no control flow and 1 stop bits\n", port_name, baud_rate);
+int sendBinaryFile(struct sp_port* port, uint32_t size) {
+    int packet_number = 1;
+    int bytes_remaining = size;
+    int total_data_packets_to_send = (size / PACKET_MAX_PAYLOAD_SIZE) + 1;
 
-    check(sp_get_port_by_name(port_name, port));
-    check(sp_open(*port, SP_MODE_READ_WRITE));
-    check(sp_set_baudrate(*port, baud_rate));
-    check(sp_set_bits(*port, 8));
-    check(sp_set_parity(*port, SP_PARITY_NONE));
-    check(sp_set_stopbits(*port, 1));
-    check(sp_set_flowcontrol(*port, SP_FLOWCONTROL_NONE));
+    while (bytes_remaining > 0) {
+        int bytes_to_send = (bytes_remaining > PACKET_MAX_PAYLOAD_SIZE) ? PACKET_MAX_PAYLOAD_SIZE : bytes_remaining;
+        if (sendOtaData(port, APP_BIN, packet_number, bytes_to_send) < 0) {
+            printf("Error sending OTA data packet %d\n", packet_number);
+            return -1;
+        }
+        printf("Sent OTA data packet %d (%d/%d)\n", packet_number, packet_number, total_data_packets_to_send);
+        bytes_remaining -= bytes_to_send;
+        packet_number++;
+    }
 
     return 0;
-}
-
-int sendOtaStartCommand(struct sp_port* port) {
-    OtaCommandPacket* cmd_packet = (OtaCommandPacket*) DATA_BUF;
-    
-    // Build command packet to send
-    memset(DATA_BUF, 0, PACKET_MAX_SIZE);
-    cmd_packet->sof         = PACKET_SOF;
-    cmd_packet->packet_type = COMMAND;
-    cmd_packet->packet_num  = 0;
-    cmd_packet->payload_len = 1;
-    cmd_packet->cmd         = OTA_START_CMD;
-    cmd_packet->crc32       = 0;  // TBD: Implement CRC32
-    cmd_packet->eof         = PACKET_EOF;
-
-    // Send OTA command packet
-    int size = sizeof(OtaCommandPacket);
-    printf("\n\n\n\n***** Sending OTA start command (%d bytes). *****\n\n", size);
-    int res = check(sp_blocking_write(port, (uint8_t*) cmd_packet, size, SEND_RECEIVE_TIMEOUT_MS));
-    if (res != size) {
-        printf("Timed out, %d/%d bytes sent.\n", res, size);
-        return -1;
-    }
-    printf("Sent OTA start command successfully.\n");
-
-    // Wait for ACK or NACK from MCU
-    printf("Waiting for ACK or NACK from MCU...\n");
-    if (!isAckResponseReceived(port)) {
-        return -1;
-    }
-    printf("Received ACK from MCU.\n");
-
-    return 0;
-}
-
-int sendOtaHeader(struct sp_port* port, FileInfo file_info) {
-    OtaHeaderPacket* header_packet = (OtaHeaderPacket*) DATA_BUF;
-
-    // Build header packet to send
-    memset(DATA_BUF, 0, PACKET_MAX_SIZE);
-    header_packet->sof         = PACKET_SOF;
-    header_packet->packet_type = HEADER;
-    header_packet->packet_num  = 0;
-    header_packet->payload_len = sizeof(FileInfo);
-    header_packet->file_info   = file_info;
-    header_packet->crc32       = 0;  // TBD: Implement CRC32
-    header_packet->eof         = PACKET_EOF;
-
-    // Send OTA header packet
-    int size = sizeof(OtaHeaderPacket);
-    printf("\n\n\n\n***** Sending OTA header (%d bytes). *****\n\n", size);
-    int res = check(sp_blocking_write(port, (uint8_t*) header_packet, size, SEND_RECEIVE_TIMEOUT_MS));
-    if (res != size) {
-        printf("Timed out, %d/%d bytes sent.\n", res, size);
-        return -1;
-    }
-    printf("Sent OTA header successfully.\n");
-
-    // Wait for ACK or NACK from MCU
-    printf("Waiting for ACK or NACK from MCU...\n");
-    if (!isAckResponseReceived(port)) {
-        return -1;
-    }
-    printf("Received ACK from MCU.\n");
-
-    return 0;
-}
-
-int sendOtaEndCommand(struct sp_port* port) {
-    OtaCommandPacket* cmd_packet = (OtaCommandPacket*) DATA_BUF;
-
-    // Build command packet to send
-    memset(DATA_BUF, 0, PACKET_MAX_SIZE);
-    cmd_packet->sof         = PACKET_SOF;
-    cmd_packet->packet_type = COMMAND;
-    cmd_packet->packet_num  = 0;
-    cmd_packet->payload_len = 1;
-    cmd_packet->cmd         = OTA_END_CMD;
-    cmd_packet->crc32       = 0;  // TBD: Implement CRC32
-    cmd_packet->eof         = PACKET_EOF;
-
-    // Send OTA command packet
-    int size = sizeof(OtaCommandPacket);
-    printf("\n\n\n\n***** Sending OTA end command (%d bytes). *****\n\n", size);
-    int res = check(sp_blocking_write(port, (uint8_t*) cmd_packet, size, SEND_RECEIVE_TIMEOUT_MS));
-    if (res != size) {
-        printf("Timed out, %d/%d bytes sent.\n", res, size);
-        return -1;
-    }
-    printf("Sent OTA end command successfully.\n");
-
-    // Wait for ACK or NACK from MCU
-    printf("Waiting for ACK or NACK from MCU...\n");
-    if (!isAckResponseReceived(port)) {
-        return -1;
-    }
-    printf("Received ACK from MCU.\n");
-
-    return 0;
-}
-
-int check(enum sp_return result) {
-    char *error_message;
-    switch (result) {
-        case SP_ERR_ARG:
-            printf("Error: Invalid argument.\n");
-            abort();
-        case SP_ERR_FAIL:
-            error_message = sp_last_error_message();
-            printf("Error: Failed: %s\n", error_message);
-            sp_free_error_message(error_message);
-            abort();
-        case SP_ERR_SUPP:
-            printf("Error: Not supported.\n");
-            abort();
-        case SP_ERR_MEM:
-            printf("Error: Couldn't allocate memory.\n");
-            abort();
-        case SP_OK:
-        default:
-            return result;
-    }
-}
-
-bool isAckResponseReceived(struct sp_port* port) {
-    uint8_t buf[PACKET_MAX_SIZE];
-    int size = sizeof(OtaResponsePacket);
-    int res = check(sp_blocking_read(port, buf, size, SEND_RECEIVE_TIMEOUT_MS));
-    if (res != size) {
-        printf("Timed out while reading OTA response packet, %d/%d expected bytes received.\n", res, size);
-        return false;
-    }
-    OtaResponsePacket* response = (OtaResponsePacket*) buf;
-    // TODO: Check for CRC32
-    if (response->status == PACKET_ACK) {
-        return true;
-    } else {
-        printf("Received NACK.\n");
-        return false;
-    }
 }
