@@ -1,2 +1,5 @@
 # ignore executables in build folder
 /build
+
+# ignore binaries
+*.bin

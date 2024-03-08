@@ -105,16 +105,18 @@ int main(int argc, char* argv[]) {
 int sendBinaryFile(struct sp_port* port, uint32_t size) {
     int packet_number = 1;
     int bytes_remaining = size;
+    int total_bytes_sent = 0;
     int total_data_packets_to_send = (size / PACKET_MAX_PAYLOAD_SIZE) + 1;
 
     while (bytes_remaining > 0) {
         int bytes_to_send = (bytes_remaining > PACKET_MAX_PAYLOAD_SIZE) ? PACKET_MAX_PAYLOAD_SIZE : bytes_remaining;
-        if (sendOtaData(port, APP_BIN, packet_number, bytes_to_send) < 0) {
+        if (sendOtaData(port, APP_BIN + total_bytes_sent, packet_number, bytes_to_send) < 0) {
             printf("Error sending OTA data packet %d\n", packet_number);
             return -1;
         }
         printf("Sent OTA data packet %d (%d/%d)\n", packet_number, packet_number, total_data_packets_to_send);
         bytes_remaining -= bytes_to_send;
+        total_bytes_sent += bytes_to_send;
         packet_number++;
     }
 
