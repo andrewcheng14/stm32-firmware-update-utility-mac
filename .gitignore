@@ -3,3 +3,6 @@
 
 # ignore binaries
 *.bin
+
+# Mac OS generated files
+.DS_Store

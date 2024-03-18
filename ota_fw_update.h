@@ -114,22 +114,22 @@ typedef struct OtaResponsePacket {
 }__attribute__((packed)) OtaResponsePacket;
 
 // Open and configure port with 8 bits word length, no parity, and 1 stop bits
-int openSerialPort(char* port_name, int baud_rate, struct sp_port** port);
+int openOtaConnection(uint16_t port);
 
 // Helper function for error handling
 int check(enum sp_return result);
 
 // Send OTA start command with given port over UART
-int sendOtaStartCommand(struct sp_port* port);
+int sendOtaStartCommand();
 
 // Send OTA header with given port over UART
-int sendOtaHeader(struct sp_port* port, FileInfo file_info);
+int sendOtaHeader(FileInfo file_info);
 
 // Send OTA data with given port over UART
-int sendOtaData(struct sp_port* port, uint8_t* payload, uint16_t packet_num, uint16_t size);
+int sendOtaData(uint8_t* payload, uint16_t packet_num, uint16_t size);
 
 // Send OTA end command with given port over UART
-int sendOtaEndCommand(struct sp_port* port);
+int sendOtaEndCommand();
 
 // Check if ACK response is received from the given port
-bool isAckResponseReceived(struct sp_port* port);
+bool isAckResponseReceived();
